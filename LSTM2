@@ -1,0 +1,85 @@
+import numpy as np
+import pandas as pd
+import tensorflow as tf
+import matplotlib.pyplot as plt
+
+base = pd.read_csv('EURUSD2019M1_treinamento.csv')
+base = base.dropna();
+
+base_treinamento = base.iloc[:, 2].values
+#plt.plot(base)
+#plt.show()
+
+periodos = 150
+horizonte = 1
+
+x = base_treinamento[0:(len(base_treinamento) - (len(base_treinamento) % periodos))]
+x_batches = x.reshape(-1,periodos, 1)
+
+y = base_treinamento[1:(len(base_treinamento) - (len(base_treinamento) % periodos))+horizonte]
+y_batches = y.reshape(-1, periodos, 1)
+
+x_teste = base_treinamento[-(periodos + horizonte):]
+x_teste = x_teste[:periodos]
+x_teste = x_teste.reshape(-1, periodos, 1)
+y_teste = base_treinamento[-(periodos):]
+y_teste = y_teste.reshape(-1, periodos, 1)
+
+tf.reset_default_graph()
+
+entradas = 1
+neuronios_oculta = 100
+neuronios_saida = 1
+
+xph = tf.placeholder(tf.float32, [None, periodos, entradas])
+yph = tf.placeholder(tf.float32, [None, periodos, neuronios_saida])
+
+#celula = tf.contrib.rnn.BasicRNNCell(num_units=neuronios_oculta, activation=tf.nn.relu)
+
+def cria_uma_celula(neur):
+    return tf.contrib.rnn.LSTMCell(num_units=neur, activation=tf.nn.relu)
+
+def cria_celulas(qt, neuronios):
+    celulas =  tf.nn.rnn_cell.MultiRNNCell([cria_uma_celula(neuronios) for i in range(qt)])
+    return tf.contrib.rnn.DropoutWrapper(celulas, output_keep_prob=0.1)
+
+celula = cria_celulas(5,neuronios_oculta)
+# camada saída
+celula = tf.contrib.rnn.OutputProjectionWrapper(celula, output_size=1)
+
+
+saida_rnn, _ = tf.nn.dynamic_rnn(celula, xph, dtype=tf.float32)
+erro = tf.losses.mean_squared_error(labels=yph, predictions=saida_rnn)
+otimizador = tf.train.AdamOptimizer(learning_rate=0.00001)
+treinamento = otimizador.minimize(erro)
+
+# Add ops to save and restore all the variables.
+saver = tf.train.Saver()
+
+with tf.Session() as sess:
+    sess.run(tf.global_variables_initializer())
+
+    for epoca in range(50):
+        _, custo = sess.run([treinamento, erro], feed_dict={xph: x_batches, yph: y_batches})
+        if(epoca % 1 == 0):
+            print("epoca: ", epoca, ' erro: ', custo)
+
+
+    previsoes = sess.run(saida_rnn, feed_dict={xph: x_teste})
+    save_path = saver.save(sess, "modelo.ckpt")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
